@@ -1519,3 +1519,19 @@ tr.signal-detail > td {
 .overview-table tr.sub-row td:first-child {
   padding-left: 2rem;
 }
+/* The total is the row's headline number, so the figure leads and the bar
+   stays neutral: it is a sum of two levels, not a level of its own. */
+.overview-table .total {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 7rem;
+}
+.overview-table .total strong {
+  min-width: 2.6rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.overview-table .total .bar-fill {
+  background: var(--fill-neutral);
+}

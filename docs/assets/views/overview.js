@@ -16,9 +16,9 @@ const SORTS = {
   library: { label: "Library", best: "asc" },
   required: { label: "Required", best: "desc" },
   recommended: { label: "Recommended", best: "desc" },
-  findings: { label: "Findings", best: "asc" },
+  total: { label: "Total", best: "desc" },
 };
-const DEFAULT_SORT = "required";
+const DEFAULT_SORT = "total";
 const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
 const percent = (value) =>
   value === null ? "n/a" : `${Math.round(value * 100)}%`;
@@ -31,27 +31,6 @@ export function dispose() {
 }
 
 export const title = () => "overview · conformance";
-
-/**
- * Weaver repeats a finding per signal and per span, so a raw count mostly
- * measures how much was emitted. Counted the way the instrumentation page
- * groups them: once per rule and attribute, or rule and message.
- *
- * @param {import('../data.js').Target} target
- * @returns {number}
- */
-export function distinctFindings(target) {
-  const keys = new Set(
-    (target.findings ?? []).map((finding) => {
-      const attribute =
-        finding.context?.attribute_key ??
-        finding.context?.missing_attribute ??
-        finding.message;
-      return `${finding.id}\u0000${attribute}`;
-    }),
-  );
-  return keys.size;
-}
 
 const sum = (tallies) =>
   tallies.reduce(
@@ -66,9 +45,6 @@ const sum = (tallies) =>
 const meetsRequired = (target) =>
   target.summary.required.declared > 0 &&
   target.summary.required.emitted === target.summary.required.declared;
-/** Whether a scored run left a required attribute out. */
-const missesRequired = (target) =>
-  target.summary.required.emitted < target.summary.required.declared;
 
 /**
  * Group the report's targets by the library they instrument. A library is
@@ -90,12 +66,12 @@ export function libraries(targets) {
         target,
         required: target.summary.required,
         recommended: target.summary.recommended,
-        findings: distinctFindings(target),
+        total: sum([target.summary.required, target.summary.recommended]),
       }))
       .sort(
         (a, b) =>
+          (ratio(b.total) ?? -1) - (ratio(a.total) ?? -1) ||
           (ratio(b.required) ?? -1) - (ratio(a.required) ?? -1) ||
-          (ratio(b.recommended) ?? -1) - (ratio(a.recommended) ?? -1) ||
           fullLabel(a.target).localeCompare(fullLabel(b.target)),
       );
     return {
@@ -106,7 +82,7 @@ export function libraries(targets) {
       rows,
       required: sum(rows.map((row) => row.required)),
       recommended: sum(rows.map((row) => row.recommended)),
-      findings: rows.reduce((total, row) => total + row.findings, 0),
+      total: sum(rows.map((row) => row.total)),
       meets: members.filter(meetsRequired).length,
     };
   });
@@ -119,11 +95,12 @@ function compare(sort, dir) {
     value === null ? (dir === "asc" ? Infinity : -Infinity) : value;
   const byName = (a, b) =>
     a.library.localeCompare(b.library) || a.language.localeCompare(b.language);
+  // Ties are broken by required coverage, or for required itself, by
+  // recommended.
   const other = sort === "required" ? "recommended" : "required";
   return (a, b) => {
     let order;
     if (sort === "library") order = flip * byName(a, b);
-    else if (sort === "findings") order = flip * (a.findings - b.findings);
     else
       order =
         flip * (score(ratio(a[sort])) - score(ratio(b[sort]))) ||
@@ -285,16 +262,14 @@ export default function overview(data, _argument, params) {
     }),
     el("details", { class: "lede" }, [
       el("summary", {
-        text: "Scores are attributes emitted out of those declared, summed over the library's instrumentations.",
+        text: "Scores are attributes emitted out of those declared, summed over the library's instrumentations. Total adds the required and recommended counts together.",
       }),
       el("p", {
         text:
           "Required counts required and conditionally required attributes on " +
           "the signals a run emitted; conditional ones may be legitimately " +
-          "absent for a scenario. Findings are distinct Weaver rules broken or " +
-          "absences reported, counted once per rule and attribute rather than " +
-          "per occurrence. Expand a library to compare its instrumentations, " +
-          "or open one for what to fix.",
+          "absent for a scenario. Expand a library to compare its " +
+          "instrumentations, or open one for what to fix.",
       }),
     ]),
     summary,
@@ -347,7 +322,7 @@ function tiles(shown) {
 }
 
 function libraryTable(shown, sort, dir, onSort) {
-  const head = (key, extra = {}) => {
+  const head = (key) => {
     const active = key === sort;
     return el(
       "th",
@@ -358,7 +333,6 @@ function libraryTable(shown, sort, dir, onSort) {
             ? "ascending"
             : "descending"
           : null,
-        ...extra,
       },
       [
         el("button", {
@@ -378,7 +352,7 @@ function libraryTable(shown, sort, dir, onSort) {
         el("th", { text: "Domain" }),
         head("required"),
         head("recommended"),
-        head("findings", { class: "num" }),
+        head("total"),
       ]),
     ]),
     ...shown.map(libraryRows),
@@ -401,11 +375,7 @@ function libraryRows(library) {
           ]),
           el("td", {}, coverageBar(row.required, "required")),
           el("td", {}, coverageBar(row.recommended, "recommended")),
-          el(
-            "td",
-            { class: "num" },
-            findingsBadge(row.findings, missesRequired(row.target)),
-          ),
+          el("td", {}, totalCell(row.total)),
         ]),
       );
   const name = single
@@ -451,14 +421,7 @@ function libraryRows(library) {
       el("td", { class: "kind", text: library.domain }),
       el("td", {}, coverageBar(library.required, "required")),
       el("td", {}, coverageBar(library.recommended, "recommended")),
-      el(
-        "td",
-        { class: "num" },
-        findingsBadge(
-          library.findings,
-          library.rows.some((row) => missesRequired(row.target)),
-        ),
-      ),
+      el("td", {}, totalCell(library.total)),
     ]),
     ...subRows,
   ]);
@@ -481,12 +444,24 @@ function runName(target, sided) {
     .join(" · ");
 }
 
-/** Highlighted when a required attribute is also missing: the findings are
- *  then more than advice. */
-function findingsBadge(count, hot) {
-  if (!count) return el("span", { class: "ver", text: "—" });
-  return el("span", {
-    class: `count-badge${hot ? " hot" : ""}`,
-    text: String(count),
-  });
+/**
+ * Required and recommended added together, as a percentage: nothing is
+ * weighted, so the number can be checked against the two bars beside it.
+ */
+function totalCell(tally) {
+  const value = ratio(tally);
+  if (value === null) return el("span", { class: "ver", text: "n/a" });
+  return el(
+    "div",
+    {
+      class: "total",
+      title: `${tally.emitted} of ${tally.declared} required and recommended attributes`,
+    },
+    [
+      el("strong", { text: percent(value) }),
+      el("div", { class: "bar-track" }, [
+        el("div", { class: "bar-fill", style: `width:${value * 100}%` }),
+      ]),
+    ],
+  );
 }

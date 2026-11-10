@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { load } from "../assets/data.js";
-import view, { distinctFindings, libraries } from "../assets/views/overview.js";
+import view, { libraries } from "../assets/views/overview.js";
 import { report, target } from "./fixtures.js";
 import { setup } from "./harness.js";
 
@@ -83,26 +83,11 @@ test("libraries pool their instrumentations' tallies", () => {
   assert.equal(jdbc.rows.length, 2);
   assert.deepEqual(jdbc.required, tally(3, 4));
   assert.deepEqual(jdbc.recommended, tally(3, 4));
-  assert.equal(jdbc.findings, 2);
+  // Nothing weighted: the total is the two levels added together.
+  assert.deepEqual(jdbc.total, tally(6, 8));
   assert.equal(jdbc.meets, 1);
   // The run that meets every required attribute is listed first.
   assert.equal(jdbc.rows[0].target.backend, "mariadb");
-});
-
-test("findings are counted once per rule and attribute", () => {
-  assert.equal(
-    distinctFindings(
-      run({
-        findings: [
-          { id: "a", message: "x", context: { attribute_key: "k" } },
-          { id: "a", message: "y", context: { attribute_key: "k" } },
-          { id: "a", message: "z" },
-          { id: "b", message: "z" },
-        ],
-      }),
-    ),
-    3,
-  );
 });
 
 test("the overview sorts, filters and remembers both in the link", async (t) => {
@@ -114,7 +99,7 @@ test("the overview sorts, filters and remembers both in the link", async (t) => 
       (node) => node.textContent,
     );
 
-  // Best required coverage first; an unscored library sorts last.
+  // Best total coverage first; an unscored library sorts last.
   assert.deepEqual(names(), ["flask", "jdbc", "aiohttp"]);
   assert.equal(main.querySelector(".count").textContent, "3 libraries");
 
@@ -154,9 +139,10 @@ test("the overview sorts, filters and remembers both in the link", async (t) => 
     subRows()[0].querySelector("a").getAttribute("href"),
     "#/target/database/java/mariadb/jdbc/opentelemetry-javaagent",
   );
-  // A missed required attribute makes that run's findings stand out.
-  assert.ok(subRows()[1].querySelector(".count-badge.hot"));
-  assert.equal(subRows()[0].querySelector(".count-badge.hot"), null);
+  assert.deepEqual(
+    [...main.querySelectorAll("thead th")].map((th) => th.textContent),
+    ["Library ↓", "Language", "Domain", "Required", "Recommended", "Total"],
+  );
 });
 
 test("an overview link restores its filters and ignores unknown values", async (t) => {
@@ -171,7 +157,7 @@ test("an overview link restores its filters and ignores unknown values", async (
   );
   assert.equal(main.querySelector(".count").textContent, "2 of 3 libraries");
   assert.equal(
-    main.querySelector('th[data-sort="required"]').getAttribute("aria-sort"),
+    main.querySelector('th[data-sort="total"]').getAttribute("aria-sort"),
     "descending",
   );
   // A filter bar without dropdowns must not leave a stray `0` behind.

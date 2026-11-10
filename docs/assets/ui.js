@@ -640,10 +640,10 @@ export function filterBar({
       input,
       ...pillGroups,
       ...segmentGroups,
-      selectRows.length && disclosure,
+      selectRows.length > 0 && disclosure,
       count,
     ]),
-    selectRows.length && drawer,
+    selectRows.length > 0 && drawer,
     chips,
   ]);
   apply();

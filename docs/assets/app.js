@@ -7,11 +7,13 @@ import { load } from "./data.js";
 import { current } from "./route.js";
 import { el } from "./ui.js";
 
+import * as overview from "./views/overview.js";
 import * as signals from "./views/signals.js";
 import * as target from "./views/target.js";
 
 const ROUTES = [
-  { name: "signals", match: /^\/?$/, view: signals },
+  { name: "overview", match: /^\/?$/, view: overview },
+  { name: "overview", match: /^\/overview\/?$/, view: overview },
   { name: "signals", match: /^\/signals(?:\/(.*))?$/, view: signals },
   { name: "target", match: /^\/target(?:\/(.*))?$/, view: target },
 ];

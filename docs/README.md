@@ -15,7 +15,7 @@ pull request when it changed.
 | `assets/data.js`        | fetch, and the index every view reads from                     |
 | `assets/style.css`      | the palette, and the heatmap layout                            |
 | `assets/ui.js`          | the element helpers                                            |
-| `assets/views/`         | `signals.js` and `target.js`, one module per route             |
+| `assets/views/`         | `overview.js`, `signals.js` and `target.js`, one per route     |
 | `data/conformance.json` | generated, do not edit by hand                                 |
 
 Serve locally with `python -m http.server -d docs`, then open

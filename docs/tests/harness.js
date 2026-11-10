@@ -4,6 +4,7 @@
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { report } from "./fixtures.js";
+import { dispose as disposeOverview } from "../assets/views/overview.js";
 import { dispose as disposeSignals } from "../assets/views/signals.js";
 import { dispose as disposeTarget } from "../assets/views/target.js";
 
@@ -14,6 +15,7 @@ export async function setup(t, document = report(), hash = "") {
   );
   const dom = new JSDOM(html, { url: `https://example.test/${hash}` });
   t.after(() => {
+    disposeOverview();
     disposeSignals();
     disposeTarget();
   });
